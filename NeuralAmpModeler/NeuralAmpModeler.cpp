@@ -4,6 +4,8 @@
 #include <iostream>
 #include <utility>
 
+#include <windows.h>
+
 #include "Colors.h"
 #include "../NeuralAmpModelerCore/NAM/activations.h"
 #include "../NeuralAmpModelerCore/NAM/get_dsp.h"
@@ -81,7 +83,7 @@ NeuralAmpModeler::NeuralAmpModeler(const InstanceInfo& info)
   _InitToneStack();
   nam::activations::Activation::enable_fast_tanh();
   GetParam(kInputLevel)->InitGain("Input", 0.0, -20.0, 20.0, 0.1);
-  GetParam(kToneBass)->InitDouble("Bass", 5.0, 0.0, 10.0, 0.1);
+  GetParam(kToneBass)->InitDouble("Bass Test", 5.0, 0.0, 10.0, 0.1);
   GetParam(kToneMid)->InitDouble("Middle", 5.0, 0.0, 10.0, 0.1);
   GetParam(kToneTreble)->InitDouble("Treble", 5.0, 0.0, 10.0, 0.1);
   GetParam(kOutputLevel)->InitGain("Output", 0.0, -40.0, 40.0, 0.1);
@@ -183,14 +185,16 @@ NeuralAmpModeler::NeuralAmpModeler(const InstanceInfo& info)
       {
         // Sets mNAMPath and mStagedNAM
         const std::string msg = _StageModel(fileName);
-        // TODO error messages like the IR loader.
         if (msg.size())
         {
           std::stringstream ss;
           ss << "Failed to load NAM model. Message:\n\n" << msg;
           _ShowMessageBox(GetUI(), ss.str().c_str(), "Failed to load model!", kMB_OK);
         }
-        std::cout << "Loaded: " << fileName.Get() << std::endl;
+        else
+        {
+          mLastNAMFolder = _GetFolderFromPath(fileName);
+        }
       }
     };
 
@@ -207,6 +211,10 @@ NeuralAmpModeler::NeuralAmpModeler(const InstanceInfo& info)
           message << dsp::wav::GetMsgForLoadReturnCode(retCode);
 
           _ShowMessageBox(GetUI(), message.str().c_str(), "Failed to load IR!", kMB_OK);
+        }
+        else
+        {
+          mLastIRFolder = _GetFolderFromPath(fileName);
         }
       }
     };
@@ -254,6 +262,13 @@ NeuralAmpModeler::NeuralAmpModeler(const InstanceInfo& info)
     // The meters
     pGraphics->AttachControl(new NAMMeterControl(inputMeterArea, meterBackgroundBitmap, style), kCtrlTagInputMeter);
     pGraphics->AttachControl(new NAMMeterControl(outputMeterArea, meterBackgroundBitmap, style), kCtrlTagOutputMeter);
+
+// Favorites
+    pGraphics->AttachControl(
+      new IVButtonControl(IRECT(10, 10, 110, 40), [this](IControl* pControl) { FavoriteCurrentCombo(); }, "FAV"));
+
+    pGraphics->AttachControl(
+      new IVButtonControl(IRECT(120, 10, 250, 40), [this](IControl* pControl) { ShowFavorites(); }, "SHOW FAVS"));
 
     // Settings/help/about box
     pGraphics->AttachControl(new NAMCircleButtonControl(
@@ -533,7 +548,80 @@ bool NeuralAmpModeler::OnMessage(int msgTag, int ctrlTag, int dataSize, const vo
   }
 }
 
+bool NeuralAmpModeler::IsCurrentToneAlreadyFavorited()
+{
+  std::string currentNAM = mNAMPath.Get();
+  std::string currentIR = mIRPath.Get();
+
+  for (const auto& fav : mFavorites)
+  {
+    if (fav.namPath == currentNAM && fav.irPath == currentIR)
+      return true;
+  }
+
+  return false;
+}
+
+void NeuralAmpModeler::FavoriteCurrentCombo()
+{
+  if (!mNAMPath.GetLength() || !mIRPath.GetLength())
+  {
+    MessageBoxA(nullptr, "Please load both a Capture and an IR first.", "Favorite", MB_OK);
+    return;
+  }
+
+  if (IsCurrentToneAlreadyFavorited())
+  {
+    MessageBoxA(nullptr, "This Tone is already in your favorites.", "Favorite", MB_OK);
+    return;
+  }
+
+  FavoritePreset favorite;
+  favorite.namPath = mNAMPath.Get();
+  favorite.irPath = mIRPath.Get();
+
+  mFavorites.push_back(favorite);
+
+  std::string message = "Current Tone favorited. Total favorite Tones: " + std::to_string(mFavorites.size());
+  MessageBoxA(nullptr, message.c_str(), "Favorite", MB_OK);
+}
+
+void NeuralAmpModeler::ShowFavorites()
+{
+  if (mFavorites.empty())
+  {
+    MessageBoxA(nullptr, "No favorite Tones saved yet.", "Favorites", MB_OK);
+    return;
+  }
+
+  std::string message = "Favorite Tones:\n\n";
+
+  for (size_t i = 0; i < mFavorites.size(); ++i)
+  {
+    message += std::to_string(i + 1);
+    message += ".\n";
+    message += "Capture: ";
+    message += mFavorites[i].namPath;
+    message += "\n";
+    message += "IR: ";
+    message += mFavorites[i].irPath;
+    message += "\n\n";
+  }
+
+  MessageBoxA(nullptr, message.c_str(), "Favorites", MB_OK);
+}
+
 // Private methods ============================================================
+
+WDL_String NeuralAmpModeler::_GetFolderFromPath(const WDL_String& fullPath) const
+{
+  std::filesystem::path path(fullPath.Get());
+  std::filesystem::path parent = path.parent_path();
+
+  WDL_String folder;
+  folder.Set(parent.string().c_str());
+  return folder;
+}
 
 void NeuralAmpModeler::_AllocateIOPointers(const size_t nChans)
 {

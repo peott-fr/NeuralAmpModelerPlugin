@@ -302,8 +302,15 @@ public:
     auto loadFileFunc = [&](IControl* pCaller) {
       WDL_String fileName;
       WDL_String path;
-      GetSelectedFileDirectory(path);
-#ifdef NAM_PICK_DIRECTORY
+      if (mStartFolder.GetLength())
+      {
+        path = mStartFolder;
+      }
+      else
+      {
+        GetSelectedFileDirectory(path);
+      }
+      #ifdef NAM_PICK_DIRECTORY
       pCaller->GetUI()->PromptForDirectory(path, [&](const WDL_String& fileName, const WDL_String& path) {
         if (path.GetLength())
         {
@@ -426,6 +433,8 @@ public:
     }
   }
 
+  void SetStartFolder(const WDL_String& folder) { mStartFolder = folder; }
+
 private:
   void SelectFirstFile() { mSelectedItemIndex = mFiles.GetSize() ? 0 : -1; }
 
@@ -468,6 +477,7 @@ private:
   NAMBrowserState mBrowserState;
   NAMSquareButtonControl* mClearButton = nullptr;
   NAMGetButtonControl* mGetButton = nullptr;
+  WDL_String mStartFolder;
 };
 
 class NAMMeterControl : public IVPeakAvgMeterControl<>, public IBitmapBase

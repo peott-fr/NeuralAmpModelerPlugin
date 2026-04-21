@@ -13,6 +13,8 @@
 #include "IPlug_include_in_plug_hdr.h"
 #include "ISender.h"
 
+#include <vector>
+#include <string>
 
 const int kNumPresets = 1;
 // The plugin is mono inside
@@ -182,6 +184,12 @@ private:
   std::function<void(NAM_SAMPLE**, NAM_SAMPLE**, int)> mBlockProcessFunc;
 };
 
+struct FavoritePreset
+{
+  std::string namPath;
+  std::string irPath;
+};
+
 class NeuralAmpModeler final : public iplug::Plugin
 {
 public:
@@ -224,6 +232,12 @@ private:
   // Return status code so that error messages can be relayed if
   // it wasn't successful.
   dsp::wav::LoadReturnCode _StageIR(const WDL_String& irPath);
+
+  // Favorites
+  std::vector<FavoritePreset> mFavorites;
+  void FavoriteCurrentCombo();
+  void ShowFavorites();
+  bool IsCurrentToneAlreadyFavorited();
 
   bool _HaveModel() const { return this->mModel != nullptr; };
   // Prepare the input & output buffers
@@ -307,6 +321,11 @@ private:
   // Path to IR (.wav file)
   WDL_String mIRPath;
 
+// Last-used folders
+  WDL_String mLastNAMFolder;
+  WDL_String mLastIRFolder;
+
+  WDL_String _GetFolderFromPath(const WDL_String& fullPath) const;
   WDL_String mHighLightColor{PluginColors::NAM_THEMECOLOR.ToColorCode()};
 
   std::unordered_map<std::string, double> mNAMParams = {{"Input", 0.0}, {"Output", 0.0}};
