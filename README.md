@@ -1,3 +1,8 @@
+## 🚀 Roadmap
+
+See the project roadmap here:  
+👉 https://github.com/peott-fr/NeuralAmpModelerPlugin/issues/1
+
 # Neural Amp Modeler Plug-in
 
 [![Build](https://github.com/sdatkinson/NeuralAmpModelerPlugin/actions/workflows/build-native.yml/badge.svg)](https://github.com/sdatkinson/NeuralAmpModelerPlugin/actions/workflows/build-native.yml)
