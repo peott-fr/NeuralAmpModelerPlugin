@@ -1,6 +1,6 @@
 ## 🚀 Roadmap
 
-See the project roadmap here:  
+See this repo's project roadmap here:  
 👉 https://github.com/peott-fr/NeuralAmpModelerPlugin/issues/1
 
 # Neural Amp Modeler Plug-in
