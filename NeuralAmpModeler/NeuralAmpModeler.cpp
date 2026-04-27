@@ -1,7 +1,10 @@
 #include <algorithm> // std::clamp, std::min
+#include <cctype>
 #include <cmath> // pow
+#include <cstdlib>
 #include <filesystem>
 #include <iostream>
+#include <sstream>
 #include <utility>
 
 #include <windows.h>
@@ -59,6 +62,152 @@ const IVStyle radioButtonStyle =
     .WithColor(EVColor::kON, PluginColors::NAM_THEMECOLOR) // Pressed buttons and their labels
     .WithColor(EVColor::kOFF, PluginColors::NAM_THEMECOLOR.WithOpacity(0.1f)) // Unpressed buttons
     .WithColor(EVColor::kX1, PluginColors::NAM_THEMECOLOR.WithOpacity(0.6f)); // Unpressed buttons' labels
+
+namespace
+{
+constexpr int kFavoriteIndexEditID = 1001;
+
+struct FavoriteIndexPromptState
+{
+  std::string prompt;
+  std::string value;
+  bool submitted = false;
+};
+
+void SetControlFont(HWND hwnd)
+{
+  SendMessage(hwnd, WM_SETFONT, reinterpret_cast<WPARAM>(GetStockObject(DEFAULT_GUI_FONT)), TRUE);
+}
+
+LRESULT CALLBACK FavoriteIndexPromptWndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
+{
+  auto* state = reinterpret_cast<FavoriteIndexPromptState*>(GetWindowLongPtr(hwnd, GWLP_USERDATA));
+
+  switch (message)
+  {
+    case WM_NCCREATE:
+    {
+      auto* createStruct = reinterpret_cast<CREATESTRUCT*>(lParam);
+      SetWindowLongPtr(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(createStruct->lpCreateParams));
+      return TRUE;
+    }
+    case WM_CREATE:
+    {
+      state = reinterpret_cast<FavoriteIndexPromptState*>(GetWindowLongPtr(hwnd, GWLP_USERDATA));
+
+      HWND label = CreateWindowExA(0, "STATIC", state->prompt.c_str(), WS_CHILD | WS_VISIBLE, 12, 12, 320, 34, hwnd,
+                                   nullptr, nullptr, nullptr);
+      HWND edit = CreateWindowExA(WS_EX_CLIENTEDGE, "EDIT", "", WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL, 12, 50, 320,
+                                  24, hwnd, reinterpret_cast<HMENU>(kFavoriteIndexEditID), nullptr, nullptr);
+      HWND ok = CreateWindowExA(0, "BUTTON", "OK", WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON, 176, 86, 74, 26, hwnd,
+                                reinterpret_cast<HMENU>(IDOK), nullptr, nullptr);
+      HWND cancel = CreateWindowExA(0, "BUTTON", "Cancel", WS_CHILD | WS_VISIBLE, 258, 86, 74, 26, hwnd,
+                                    reinterpret_cast<HMENU>(IDCANCEL), nullptr, nullptr);
+
+      SetControlFont(label);
+      SetControlFont(edit);
+      SetControlFont(ok);
+      SetControlFont(cancel);
+      SetFocus(edit);
+      return 0;
+    }
+    case WM_COMMAND:
+    {
+      switch (LOWORD(wParam))
+      {
+        case IDOK:
+        {
+          char input[32] = {};
+          GetDlgItemTextA(hwnd, kFavoriteIndexEditID, input, static_cast<int>(sizeof(input)));
+          state->value = input;
+          state->submitted = true;
+          DestroyWindow(hwnd);
+          return 0;
+        }
+        case IDCANCEL:
+          DestroyWindow(hwnd);
+          return 0;
+        default: break;
+      }
+      break;
+    }
+    case WM_CLOSE:
+      DestroyWindow(hwnd);
+      return 0;
+    default: break;
+  }
+
+  return DefWindowProc(hwnd, message, wParam, lParam);
+}
+
+bool PromptForFavoriteIndex(size_t numFavorites, std::string& input)
+{
+  constexpr const char* className = "NAMFavoriteIndexPrompt";
+  HINSTANCE instance = GetModuleHandle(nullptr);
+
+  WNDCLASSA windowClass = {};
+  if (!GetClassInfoA(instance, className, &windowClass))
+  {
+    windowClass.lpfnWndProc = FavoriteIndexPromptWndProc;
+    windowClass.hInstance = instance;
+    windowClass.lpszClassName = className;
+    windowClass.hCursor = LoadCursor(nullptr, IDC_ARROW);
+    windowClass.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_WINDOW + 1);
+
+    if (!RegisterClassA(&windowClass))
+      return false;
+  }
+
+  FavoriteIndexPromptState state;
+  state.prompt = "Enter favorite number to load (1-" + std::to_string(numFavorites) + "):";
+
+  constexpr int width = 360;
+  constexpr int height = 150;
+  const int x = (GetSystemMetrics(SM_CXSCREEN) - width) / 2;
+  const int y = (GetSystemMetrics(SM_CYSCREEN) - height) / 2;
+
+  HWND hwnd = CreateWindowExA(WS_EX_DLGMODALFRAME | WS_EX_TOPMOST, className, "Load Favorite",
+                              WS_CAPTION | WS_POPUP | WS_SYSMENU, x, y, width, height, nullptr, nullptr, instance,
+                              &state);
+
+  if (!hwnd)
+    return false;
+
+  ShowWindow(hwnd, SW_SHOW);
+  UpdateWindow(hwnd);
+
+  MSG msg;
+  while (IsWindow(hwnd) && GetMessage(&msg, nullptr, 0, 0) > 0)
+  {
+    if (!IsDialogMessage(hwnd, &msg))
+    {
+      TranslateMessage(&msg);
+      DispatchMessage(&msg);
+    }
+  }
+
+  input = state.value;
+  return state.submitted;
+}
+
+bool TryParseFavoriteIndex(const std::string& input, size_t numFavorites, size_t& index)
+{
+  char* end = nullptr;
+  const long selected = std::strtol(input.c_str(), &end, 10);
+
+  while (end != nullptr && std::isspace(static_cast<unsigned char>(*end)))
+    ++end;
+
+  if (input.empty() || end == input.c_str() || (end != nullptr && *end != '\0') || selected < 1
+      || selected > static_cast<long>(numFavorites))
+  {
+    return false;
+  }
+
+  index = static_cast<size_t>(selected - 1);
+  return true;
+}
+} // namespace
 
 EMsgBoxResult _ShowMessageBox(iplug::igraphics::IGraphics* pGraphics, const char* str, const char* caption,
                               EMsgBoxType type)
@@ -586,6 +735,41 @@ void NeuralAmpModeler::FavoriteCurrentCombo()
   MessageBoxA(nullptr, message.c_str(), "Favorite", MB_OK);
 }
 
+bool NeuralAmpModeler::LoadFavoriteTone(size_t index)
+{
+  if (index >= mFavorites.size())
+    return false;
+
+  const FavoritePreset& favorite = mFavorites[index];
+
+  WDL_String namPath;
+  namPath.Set(favorite.namPath.c_str());
+  const std::string modelMessage = _StageModel(namPath);
+  if (modelMessage.size())
+  {
+    std::stringstream message;
+    message << "Failed to load favorite Capture:\n\n" << modelMessage;
+    MessageBoxA(nullptr, message.str().c_str(), "Load Favorite", MB_OK);
+    return false;
+  }
+
+  WDL_String irPath;
+  irPath.Set(favorite.irPath.c_str());
+  const dsp::wav::LoadReturnCode irLoadCode = _StageIR(irPath);
+  if (irLoadCode != dsp::wav::LoadReturnCode::SUCCESS)
+  {
+    std::stringstream message;
+    message << "Failed to load favorite IR:\n\n";
+    message << dsp::wav::GetMsgForLoadReturnCode(irLoadCode);
+    MessageBoxA(nullptr, message.str().c_str(), "Load Favorite", MB_OK);
+    return false;
+  }
+
+  mLastNAMFolder = _GetFolderFromPath(namPath);
+  mLastIRFolder = _GetFolderFromPath(irPath);
+  return true;
+}
+
 void NeuralAmpModeler::ShowFavorites()
 {
   if (mFavorites.empty())
@@ -608,7 +792,23 @@ void NeuralAmpModeler::ShowFavorites()
     message += "\n\n";
   }
 
-  MessageBoxA(nullptr, message.c_str(), "Favorites", MB_OK);
+  message += "Press OK to choose a favorite Tone to load.";
+  if (MessageBoxA(nullptr, message.c_str(), "Favorites", MB_OKCANCEL) != IDOK)
+    return;
+
+  std::string input;
+  if (!PromptForFavoriteIndex(mFavorites.size(), input))
+    return;
+
+  size_t index = 0;
+  if (!TryParseFavoriteIndex(input, mFavorites.size(), index))
+  {
+    MessageBoxA(nullptr, "Please enter a valid favorite number.", "Load Favorite", MB_OK);
+    return;
+  }
+
+  if (LoadFavoriteTone(index))
+    MessageBoxA(nullptr, "Favorite Tone loaded.", "Load Favorite", MB_OK);
 }
 
 // Private methods ============================================================

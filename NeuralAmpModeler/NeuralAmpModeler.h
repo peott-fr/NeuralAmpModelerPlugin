@@ -237,6 +237,7 @@ private:
   std::vector<FavoritePreset> mFavorites;
   void FavoriteCurrentCombo();
   void ShowFavorites();
+  bool LoadFavoriteTone(size_t index);
   bool IsCurrentToneAlreadyFavorited();
 
   bool _HaveModel() const { return this->mModel != nullptr; };
